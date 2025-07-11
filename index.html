@@ -443,13 +443,15 @@
                 <div class="form-row">
                     <div>
                         <label for="firmaAdi">Firma Ünvanı:</label>
-                        <input type="text" id="firmaAdi" placeholder="Firma Ünvanını girin">
+                        <input type="text" id="firmaAdi" placeholder="Firma Ünvanını girin" list="firmaAdiList">
+                        <datalist id="firmaAdiList"></datalist>
                     </div>
                 </div>
                 <div class="form-row">
                     <div>
                         <label for="yetkiliKisi">Yetkili Kişi:</label>
-                        <input type="text" id="yetkiliKisi" placeholder="Yetkili kişinin adı soyadı">
+                        <input type="text" id="yetkiliKisi" placeholder="Yetkili kişinin adı soyadı" list="yetkiliKisiList">
+                        <datalist id="yetkiliKisiList"></datalist>
                     </div>
                     <div>
                         <label for="iletisim">İletişim Bilgileri (E-posta, Telefon):</label>
@@ -592,6 +594,7 @@
             const yyyy = today.getFullYear();
             teklifTarihiInput.value = `${yyyy}-${mm}-${dd}`;
             
+            loadFormData(); // Kaydedilmiş verileri yükle
             calculateTotal();
             updatePrintContent();
         });
@@ -626,6 +629,7 @@
             
             document.getElementById('grandTotal').textContent = grandTotal.toFixed(2) + ' ' + currency;
             updatePrintContent();
+            saveFormData(); // Hesaplama sonrası verileri kaydet
         }
 
         function addItem() {
@@ -640,6 +644,7 @@
             `;
             priceItemsDiv.appendChild(newItemRow);
             calculateTotal();
+            saveFormData(); // Yeni satır eklenince de kaydet
         }
 
         function resetForm() {
@@ -667,6 +672,11 @@
 
             calculateTotal();
             updatePrintContent();
+            localStorage.removeItem('formData'); // Form temizlenince localStorage'dan da kaldır
+            localStorage.removeItem('firmaAdiHistory'); // Firma adı geçmişini de temizle
+            localStorage.removeItem('yetkiliKisiHistory'); // Yetkili kişi geçmişini de temizle
+            updateDatalist('firmaAdiList', []);
+            updateDatalist('yetkiliKisiList', []);
         }
 
         document.getElementById('priceItems').addEventListener('input', calculateTotal);
@@ -674,8 +684,14 @@
         document.getElementById('kdvToggle').addEventListener('change', calculateTotal);
         
         document.querySelectorAll('.screen-only input, .screen-only textarea, .screen-only select').forEach(input => {
-            input.addEventListener('input', updatePrintContent);
-            input.addEventListener('change', updatePrintContent);
+            input.addEventListener('input', () => {
+                updatePrintContent();
+                saveFormData(); // Input değiştikçe verileri kaydet
+            });
+            input.addEventListener('change', () => {
+                updatePrintContent();
+                saveFormData(); // Değişiklik onaylandığında da kaydet
+            });
         });
 
         // PDF çıktısı için içeriği güncelleyen fonksiyon
@@ -736,6 +752,118 @@
                 document.title = originalTitle;
             }, 500);  
         }
+
+        // --- Local Storage Fonksiyonları ---
+
+        function saveFormData() {
+            const formData = {
+                teklifNo: document.getElementById('teklifNo').value,
+                teklifTarihi: document.getElementById('teklifTarihi').value,
+                firmaAdi: document.getElementById('firmaAdi').value,
+                yetkiliKisi: document.getElementById('yetkiliKisi').value,
+                iletisim: document.getElementById('iletisim').value,
+                gecerlilikSuresi: document.getElementById('gecerlilikSuresi').value,
+                currencySelect: document.getElementById('currencySelect').value,
+                kdvToggle: document.getElementById('kdvToggle').checked,
+                siparisKodu: document.getElementById('siparisKodu').value,
+                items: []
+            };
+
+            document.querySelectorAll('.item-row').forEach(item => {
+                formData.items.push({
+                    description: item.querySelector('.description-input').value,
+                    quantity: item.querySelector('.quantity-input').value,
+                    price: item.querySelector('.price-input').value
+                });
+            });
+
+            localStorage.setItem('formData', JSON.stringify(formData));
+            
+            // Firma adı ve yetkili kişi geçmişini kaydet
+            saveToHistory('firmaAdiHistory', formData.firmaAdi);
+            saveToHistory('yetkiliKisiHistory', formData.yetkiliKisi);
+        }
+
+        function loadFormData() {
+            const savedData = localStorage.getItem('formData');
+            if (savedData) {
+                const formData = JSON.parse(savedData);
+
+                document.getElementById('teklifNo').value = formData.teklifNo || '';
+                document.getElementById('teklifTarihi').value = formData.teklifTarihi || '';
+                document.getElementById('firmaAdi').value = formData.firmaAdi || '';
+                document.getElementById('yetkiliKisi').value = formData.yetkiliKisi || '';
+                document.getElementById('iletisim').value = formData.iletisim || '';
+                document.getElementById('gecerlilikSuresi').value = formData.gecerlilikSuresi || '';
+                document.getElementById('currencySelect').value = formData.currencySelect || 'TL';
+                document.getElementById('kdvToggle').checked = formData.kdvToggle !== undefined ? formData.kdvToggle : true;
+                document.getElementById('siparisKodu').value = formData.siparisKodu || '';
+
+                const priceItemsDiv = document.getElementById('priceItems');
+                // Mevcut satırları temizle, sadece 1 tane kalacak şekilde
+                while (priceItemsDiv.children.length > 1) {
+                    priceItemsDiv.removeChild(priceItemsDiv.lastChild);
+                }
+                // İlk satırı güncelle veya yenilerini ekle
+                if (formData.items && formData.items.length > 0) {
+                    // İlk satırı doldur
+                    const firstItem = priceItemsDiv.querySelector('.item-row');
+                    firstItem.querySelector('.description-input').value = formData.items[0].description || '';
+                    firstItem.querySelector('.quantity-input').value = formData.items[0].quantity || '1';
+                    firstItem.querySelector('.price-input').value = formData.items[0].price || '';
+
+                    // Diğer satırları ekle
+                    for (let i = 1; i < formData.items.length; i++) {
+                        const itemData = formData.items[i];
+                        const newItemRow = document.createElement('div');
+                        newItemRow.className = 'item-row';
+                        newItemRow.innerHTML = `
+                            <input type="text" class="description-input" placeholder="Proje / Stok Kodu Malzeme Adı" value="${itemData.description || ''}">
+                            <input type="number" class="quantity-input" placeholder="Miktar" value="${itemData.quantity || '1'}" min="1" oninput="calculateTotal()">
+                            <input type="number" class="price-input" placeholder="Birim Fiyat" value="${itemData.price || ''}" oninput="calculateTotal()">
+                            <div class="total-price-item">0.00 ${formData.currencySelect || 'TL'}</div>
+                        `;
+                        priceItemsDiv.appendChild(newItemRow);
+                    }
+                }
+            }
+
+            // Firma adı ve yetkili kişi geçmişini yükle ve datalistleri güncelle
+            const firmaAdiHistory = JSON.parse(localStorage.getItem('firmaAdiHistory') || '[]');
+            const yetkiliKisiHistory = JSON.parse(localStorage.getItem('yetkiliKisiHistory') || '[]');
+            updateDatalist('firmaAdiList', firmaAdiHistory);
+            updateDatalist('yetkiliKisiList', yetkiliKisiHistory);
+        }
+
+        function saveToHistory(key, value) {
+            if (!value) return; // Boş değeri kaydetme
+            let history = JSON.parse(localStorage.getItem(key) || '[]');
+            if (!history.includes(value)) {
+                history.unshift(value); // En başa ekle
+                if (history.length > 10) { // Sadece son 10 kaydı tut
+                    history = history.slice(0, 10);
+                }
+                localStorage.setItem(key, JSON.stringify(history));
+                updateDatalist(key.replace('History', 'List'), history);
+            }
+        }
+
+        function updateDatalist(listId, data) {
+            const datalist = document.getElementById(listId);
+            if (datalist) {
+                datalist.innerHTML = ''; // Mevcut seçenekleri temizle
+                data.forEach(item => {
+                    const option = document.createElement('option');
+                    option.value = item;
+                    datalist.appendChild(option);
+                });
+            }
+        }
+
+        // Input alanlarına yazmaya başlandığında da saveFormData'yı tetikleyebiliriz
+        document.getElementById('firmaAdi').addEventListener('change', () => saveToHistory('firmaAdiHistory', document.getElementById('firmaAdi').value));
+        document.getElementById('yetkiliKisi').addEventListener('change', () => saveToHistory('yetkiliKisiHistory', document.getElementById('yetkiliKisi').value));
+
     </script>
 </body>
 </html>
