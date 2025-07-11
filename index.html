@@ -595,9 +595,13 @@
             const yyyy = today.getFullYear();
             teklifTarihiInput.value = `${yyyy}-${mm}-${dd}`;
             
-            loadFormData(); // Kaydedilmiş verileri yükle
-            calculateTotal();
-            updatePrintContent();
+            // Sadece geçmiş verilerini yükle (Firma, Yetkili, İletişim)
+            loadHistoryData(); 
+            // Genel formu sıfırla
+            resetMainFormFields();
+            
+            calculateTotal(); // Toplamları başlangıçta hesapla (temiz form için 0 olacak)
+            updatePrintContent(); // Yazdırma içeriğini başlangıçta güncelle
         });
 
         function calculateTotal() {
@@ -630,7 +634,8 @@
             
             document.getElementById('grandTotal').textContent = grandTotal.toFixed(2) + ' ' + currency;
             updatePrintContent();
-            saveFormData(); // Hesaplama sonrası verileri kaydet
+            // Not: calculateTotal çağrıldığında saveFormData çağrılmıyor, sadece PDF indirmede çağrılacak.
+            // Firma/Yetkili/İletişim alanları için anlık kaydetme aşağıda kendi event'leriyle sağlanacak.
         }
 
         function addItem() {
@@ -645,22 +650,29 @@
             `;
             priceItemsDiv.appendChild(newItemRow);
             calculateTotal();
-            saveFormData(); // Yeni satır eklenince de kaydet
+            // Yeni satır eklendiğinde firma geçmişi kaydı yapmaya gerek yok
         }
 
-        function resetForm() {
-            document.querySelectorAll('input[type="text"], input[type="number"], textarea').forEach(input => {
-                input.value = '';
-            });
-            document.getElementById('currencySelect').value = 'TL';
-            document.getElementById('kdvToggle').checked = true;
-
+        // Ana form alanlarını temizleyen yeni fonksiyon
+        function resetMainFormFields() {
+            document.getElementById('teklifNo').value = '';
+            // Tarih bugün olarak ayarlanacak, temizlenmeyecek
             const teklifTarihiInput = document.getElementById('teklifTarihi');
             const today = new Date();
             const dd = String(today.getDate()).padStart(2, '0');
             const mm = String(today.getMonth() + 1).padStart(2, '0');
             const yyyy = today.getFullYear();
             teklifTarihiInput.value = `${yyyy}-${mm}-${dd}`;
+
+            // Firma, Yetkili, İletişim alanlarının sadece değerini temizle, geçmişini değil
+            document.getElementById('firmaAdi').value = '';
+            document.getElementById('yetkiliKisi').value = '';
+            document.getElementById('iletisim').value = '';
+            
+            document.getElementById('gecerlilikSuresi').value = '';
+            document.getElementById('currencySelect').value = 'TL';
+            document.getElementById('kdvToggle').checked = true;
+            document.getElementById('siparisKodu').value = '';
 
             const priceItemsDiv = document.getElementById('priceItems');
             while (priceItemsDiv.children.length > 1) {
@@ -673,32 +685,28 @@
 
             calculateTotal();
             updatePrintContent();
-            // Form temizlendiğinde, genel formData'yı ve sadece ilgili geçmiş listelerini temizle
+            // `localStorage`'daki genel `formData`'yı temizle ki F5'te sıfırlansın
             localStorage.removeItem('formData'); 
-            localStorage.removeItem('firmaAdiHistory');
-            localStorage.removeItem('yetkiliKisiHistory'); 
-            localStorage.removeItem('iletisimHistory'); 
-            
-            // Datalistleri de boşalt
-            updateDatalist('firmaAdiList', []);
-            updateDatalist('yetkiliKisiList', []);
-            updateDatalist('iletisimList', []);
+            // Firma, Yetkili, İletişim geçmişleri kalmaya devam edecek
         }
 
-        document.getElementById('priceItems').addEventListener('input', calculateTotal);
-        document.getElementById('currencySelect').addEventListener('change', calculateTotal);
-        document.getElementById('kdvToggle').addEventListener('change', calculateTotal);
-        
+        // "Formu Temizle" butonu artık resetMainFormFields'ı çağırıyor
+        function resetForm() {
+            resetMainFormFields();
+        }
+
+
+        // Herhangi bir input, textarea, select değiştiğinde `updatePrintContent` çağrılır.
+        // Bu, yazdırma görünümünün anlık olarak güncellenmesini sağlar.
+        // Firma/Yetkili/İletişim alanları için ayrı kaydetme event'leri olacak.
         document.querySelectorAll('.screen-only input, .screen-only textarea, .screen-only select').forEach(input => {
-            input.addEventListener('input', () => {
-                updatePrintContent();
-                saveFormData(); // Input değiştikçe verileri kaydet
-            });
-            input.addEventListener('change', () => {
-                updatePrintContent();
-                saveFormData(); // Değişiklik onaylandığında da kaydet
-            });
+            if (input.id !== 'firmaAdi' && input.id !== 'yetkiliKisi' && input.id !== 'iletisim') {
+                input.addEventListener('input', updatePrintContent);
+                input.addEventListener('change', updatePrintContent);
+            }
         });
+        // Öğe satırlarındaki inputlar için de calculateTotal zaten updatePrintContent çağırıyor.
+
 
         // PDF çıktısı için içeriği güncelleyen fonksiyon
         function updatePrintContent() {
@@ -736,41 +744,20 @@
             document.getElementById('outputGrandTotalOnly').textContent = document.getElementById('grandTotal').textContent.replace('Genel Toplam: ', '');
         }
 
-        // PDF indirme fonksiyonu
+        // PDF indirme fonksiyonu (artık sadece bu buton kaydetme işlemini de tetikleyecek)
         function downloadPdf() {
-            saveFormData(); // PDF indirmeden önce tüm verileri kaydet
-            const siparisNo = document.getElementById('teklifNo').value.trim();
-            let fileName = "TEKLİF FORMU.pdf";
+            // Sadece Firma, Yetkili ve İletişim bilgilerini geçmişe kaydet
+            saveToHistory('firmaAdiHistory', document.getElementById('firmaAdi').value);
+            saveToHistory('yetkiliKisiHistory', document.getElementById('yetkiliKisi').value);
+            saveToHistory('iletisimHistory', document.getElementById('iletisim').value);
 
-            if (siparisNo) {
-                const cleanSiparisNo = siparisNo.replace(/[\/\\\s]/g, '_');  
-                fileName = `${cleanSiparisNo}_TEKLİF_FORMU.pdf`;
-            }
-
-            const originalTitle = document.title;
-            document.title = fileName;
-
-            // Yazdırma işlemi başlatılır. Tarayıcı genellikle bir "Kaydet" veya "Yazdır" penceresi açar.
-            // "PDF olarak kaydet" seçeneği, tarayıcıya bağlı olarak otomatik indirme sağlayabilir.
-            window.print();
-
-            // Başlığı eski haline getirir
-            setTimeout(() => {
-                document.title = originalTitle;
-            }, 500);  
-        }
-
-        // --- Local Storage ve Datalist Fonksiyonları ---
-
-        function saveFormData() {
+            // Geri kalan form verilerini formData olarak kaydet
             const formData = {
                 teklifNo: document.getElementById('teklifNo').value,
                 teklifTarihi: document.getElementById('teklifTarihi').value,
-                // Firma, Yetkili ve İletişim bilgileri ayrıca history'ye kaydedilecek, ana formda sadece en son hali tutuluyor
                 firmaAdi: document.getElementById('firmaAdi').value,
                 yetkiliKisi: document.getElementById('yetkiliKisi').value,
                 iletisim: document.getElementById('iletisim').value,
-                // Diğer alanlar
                 gecerlilikSuresi: document.getElementById('gecerlilikSuresi').value,
                 currencySelect: document.getElementById('currencySelect').value,
                 kdvToggle: document.getElementById('kdvToggle').checked,
@@ -785,60 +772,29 @@
                     price: item.querySelector('.price-input').value
                 });
             });
+            localStorage.setItem('formData', JSON.stringify(formData)); // Bu veriyi de kaydediyoruz.
 
-            localStorage.setItem('formData', JSON.stringify(formData));
-            
-            // Firma adı, yetkili kişi ve iletişim geçmişini kaydet (her giriş yapıldığında veya PDF indirildiğinde)
-            saveToHistory('firmaAdiHistory', formData.firmaAdi);
-            saveToHistory('yetkiliKisiHistory', formData.yetkiliKisi);
-            saveToHistory('iletisimHistory', formData.iletisim);
-        }
+            // PDF indirme işlemi
+            const siparisNo = document.getElementById('teklifNo').value.trim();
+            let fileName = "TEKLİF FORMU.pdf";
 
-        function loadFormData() {
-            const savedData = localStorage.getItem('formData');
-            if (savedData) {
-                const formData = JSON.parse(savedData);
-
-                document.getElementById('teklifNo').value = formData.teklifNo || '';
-                document.getElementById('teklifTarihi').value = formData.teklifTarihi || '';
-                document.getElementById('firmaAdi').value = formData.firmaAdi || '';
-                document.getElementById('yetkiliKisi').value = formData.yetkiliKisi || '';
-                document.getElementById('iletisim').value = formData.iletisim || '';
-                document.getElementById('gecerlilikSuresi').value = formData.gecerlilikSuresi || '';
-                document.getElementById('currencySelect').value = formData.currencySelect || 'TL';
-                document.getElementById('kdvToggle').checked = formData.kdvToggle !== undefined ? formData.kdvToggle : true;
-                document.getElementById('siparisKodu').value = formData.siparisKodu || '';
-
-                const priceItemsDiv = document.getElementById('priceItems');
-                // Mevcut satırları temizle, sadece 1 tane kalacak şekilde
-                while (priceItemsDiv.children.length > 1) {
-                    priceItemsDiv.removeChild(priceItemsDiv.lastChild);
-                }
-                // İlk satırı güncelle veya yenilerini ekle
-                if (formData.items && formData.items.length > 0) {
-                    // İlk satırı doldur
-                    const firstItem = priceItemsDiv.querySelector('.item-row');
-                    firstItem.querySelector('.description-input').value = formData.items[0].description || '';
-                    firstItem.querySelector('.quantity-input').value = formData.items[0].quantity || '1';
-                    firstItem.querySelector('.price-input').value = formData.items[0].price || '';
-
-                    // Diğer satırları ekle
-                    for (let i = 1; i < formData.items.length; i++) {
-                        const itemData = formData.items[i];
-                        const newItemRow = document.createElement('div');
-                        newItemRow.className = 'item-row';
-                        newItemRow.innerHTML = `
-                            <input type="text" class="description-input" placeholder="Proje / Stok Kodu Malzeme Adı" value="${itemData.description || ''}">
-                            <input type="number" class="quantity-input" placeholder="Miktar" value="${itemData.quantity || '1'}" min="1" oninput="calculateTotal()">
-                            <input type="number" class="price-input" placeholder="Birim Fiyat" value="${itemData.price || ''}" oninput="calculateTotal()">
-                            <div class="total-price-item">0.00 ${formData.currencySelect || 'TL'}</div>
-                        `;
-                        priceItemsDiv.appendChild(newItemRow);
-                    }
-                }
+            if (siparisNo) {
+                const cleanSiparisNo = siparisNo.replace(/[\/\\\s]/g, '_');  
+                fileName = `${cleanSiparisNo}_TEKLİF_FORMU.pdf`;
             }
 
-            // Firma adı, yetkili kişi ve iletişim geçmişini yükle ve datalistleri güncelle
+            const originalTitle = document.title;
+            document.title = fileName;
+
+            window.print();
+
+            setTimeout(() => {
+                document.title = originalTitle;
+            }, 500);  
+        }
+
+        // Sadece geçmiş datalist verilerini yükler (Firma, Yetkili, İletişim)
+        function loadHistoryData() {
             const firmaAdiHistory = JSON.parse(localStorage.getItem('firmaAdiHistory') || '[]');
             const yetkiliKisiHistory = JSON.parse(localStorage.getItem('yetkiliKisiHistory') || '[]');
             const iletisimHistory = JSON.parse(localStorage.getItem('iletisimHistory') || '[]');
@@ -850,17 +806,16 @@
 
         // History'ye değer ekler ve güncelleyerek sadece benzersiz değerleri tutar
         function saveToHistory(key, value) {
-            if (!value || value.trim() === '') return; // Boş veya sadece boşluk içeren değeri kaydetme
+            if (!value || value.trim() === '') return; 
             let history = JSON.parse(localStorage.getItem(key) || '[]');
             
-            // Değeri küçük/büyük harf fark etmeksizin kontrol et ve varsa kaldır (güncel değeri en üste almak için)
             const lowerCaseValue = value.toLowerCase();
             history = history.filter(item => item.toLowerCase() !== lowerCaseValue);
             
             history.unshift(value.trim()); // En başa ekle
 
-            if (history.length > 20) { // Sadece son 20 benzersiz kaydı tut
-                history = history.slice(0, 20);
+            if (history.length > 20) { 
+                history = history.slice(0, 20); 
             }
             localStorage.setItem(key, JSON.stringify(history));
             updateDatalist(key.replace('History', 'List'), history);
@@ -870,7 +825,7 @@
         function updateDatalist(listId, data) {
             const datalist = document.getElementById(listId);
             if (datalist) {
-                datalist.innerHTML = ''; // Mevcut seçenekleri temizle
+                datalist.innerHTML = ''; 
                 data.forEach(item => {
                     const option = document.createElement('option');
                     option.value = item;
@@ -879,10 +834,19 @@
             }
         }
 
-        // Input alanlarının değişimini takip ederek history'yi güncelle
-        document.getElementById('firmaAdi').addEventListener('change', (event) => saveToHistory('firmaAdiHistory', event.target.value));
-        document.getElementById('yetkiliKisi').addEventListener('change', (event) => saveToHistory('yetkiliKisiHistory', event.target.value));
-        document.getElementById('iletisim').addEventListener('change', (event) => saveToHistory('iletisimHistory', event.target.value));
+        // Firma, Yetkili, İletişim alanları değiştiğinde anında geçmişe kaydet
+        document.getElementById('firmaAdi').addEventListener('input', (event) => {
+            saveToHistory('firmaAdiHistory', event.target.value);
+            updatePrintContent(); // Yazdırma içeriğini de güncelle
+        });
+        document.getElementById('yetkiliKisi').addEventListener('input', (event) => {
+            saveToHistory('yetkiliKisiHistory', event.target.value);
+            updatePrintContent(); // Yazdırma içeriğini de güncelle
+        });
+        document.getElementById('iletisim').addEventListener('input', (event) => {
+            saveToHistory('iletisimHistory', event.target.value);
+            updatePrintContent(); // Yazdırma içeriğini de güncelle
+        });
 
     </script>
 </body>
