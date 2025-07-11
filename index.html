@@ -673,10 +673,13 @@
 
             calculateTotal();
             updatePrintContent();
-            localStorage.removeItem('formData'); // Form temizlenince en son kaydedilen ana formu kaldır
-            localStorage.removeItem('firmaAdiHistory'); // Firma adı geçmişini temizle
-            localStorage.removeItem('yetkiliKisiHistory'); // Yetkili kişi geçmişini temizle
-            localStorage.removeItem('iletisimHistory'); // İletişim geçmişini temizle
+            // Form temizlendiğinde, genel formData'yı ve sadece ilgili geçmiş listelerini temizle
+            localStorage.removeItem('formData'); 
+            localStorage.removeItem('firmaAdiHistory');
+            localStorage.removeItem('yetkiliKisiHistory'); 
+            localStorage.removeItem('iletisimHistory'); 
+            
+            // Datalistleri de boşalt
             updateDatalist('firmaAdiList', []);
             updateDatalist('yetkiliKisiList', []);
             updateDatalist('iletisimList', []);
@@ -763,7 +766,7 @@
             const formData = {
                 teklifNo: document.getElementById('teklifNo').value,
                 teklifTarihi: document.getElementById('teklifTarihi').value,
-                // Firma, Yetkili ve İletişim bilgileri ayrıca history'ye kaydedilecek
+                // Firma, Yetkili ve İletişim bilgileri ayrıca history'ye kaydedilecek, ana formda sadece en son hali tutuluyor
                 firmaAdi: document.getElementById('firmaAdi').value,
                 yetkiliKisi: document.getElementById('yetkiliKisi').value,
                 iletisim: document.getElementById('iletisim').value,
@@ -785,7 +788,7 @@
 
             localStorage.setItem('formData', JSON.stringify(formData));
             
-            // Firma adı, yetkili kişi ve iletişim geçmişini kaydet
+            // Firma adı, yetkili kişi ve iletişim geçmişini kaydet (her giriş yapıldığında veya PDF indirildiğinde)
             saveToHistory('firmaAdiHistory', formData.firmaAdi);
             saveToHistory('yetkiliKisiHistory', formData.yetkiliKisi);
             saveToHistory('iletisimHistory', formData.iletisim);
@@ -845,12 +848,12 @@
             updateDatalist('iletisimList', iletisimHistory);
         }
 
-        // history'ye değer ekler ve güncelleyerek sadece benzersiz değerleri tutar
+        // History'ye değer ekler ve güncelleyerek sadece benzersiz değerleri tutar
         function saveToHistory(key, value) {
             if (!value || value.trim() === '') return; // Boş veya sadece boşluk içeren değeri kaydetme
             let history = JSON.parse(localStorage.getItem(key) || '[]');
             
-            // Değeri küçük/büyük harf fark etmeksizin kontrol et ve varsa kaldır
+            // Değeri küçük/büyük harf fark etmeksizin kontrol et ve varsa kaldır (güncel değeri en üste almak için)
             const lowerCaseValue = value.toLowerCase();
             history = history.filter(item => item.toLowerCase() !== lowerCaseValue);
             
@@ -876,10 +879,10 @@
             }
         }
 
-        // Input alanlarının değiştiğini takip ederek history'yi güncelle
-        document.getElementById('firmaAdi').addEventListener('change', () => saveToHistory('firmaAdiHistory', document.getElementById('firmaAdi').value));
-        document.getElementById('yetkiliKisi').addEventListener('change', () => saveToHistory('yetkiliKisiHistory', document.getElementById('yetkiliKisi').value));
-        document.getElementById('iletisim').addEventListener('change', () => saveToHistory('iletisimHistory', document.getElementById('iletisim').value));
+        // Input alanlarının değişimini takip ederek history'yi güncelle
+        document.getElementById('firmaAdi').addEventListener('change', (event) => saveToHistory('firmaAdiHistory', event.target.value));
+        document.getElementById('yetkiliKisi').addEventListener('change', (event) => saveToHistory('yetkiliKisiHistory', event.target.value));
+        document.getElementById('iletisim').addEventListener('change', (event) => saveToHistory('iletisimHistory', event.target.value));
 
     </script>
 </body>
