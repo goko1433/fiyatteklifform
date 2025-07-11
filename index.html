@@ -455,7 +455,8 @@
                     </div>
                     <div>
                         <label for="iletisim">İletişim Bilgileri (E-posta, Telefon):</label>
-                        <input type="text" id="iletisim" placeholder="E-posta ve telefon bilgileri">
+                        <input type="text" id="iletisim" placeholder="E-posta ve telefon bilgileri" list="iletisimList">
+                        <datalist id="iletisimList"></datalist>
                     </div>
                 </div>
                 <div class="form-row">
@@ -672,11 +673,13 @@
 
             calculateTotal();
             updatePrintContent();
-            localStorage.removeItem('formData'); // Form temizlenince localStorage'dan da kaldır
-            localStorage.removeItem('firmaAdiHistory'); // Firma adı geçmişini de temizle
-            localStorage.removeItem('yetkiliKisiHistory'); // Yetkili kişi geçmişini de temizle
+            localStorage.removeItem('formData'); // Form temizlenince en son kaydedilen ana formu kaldır
+            localStorage.removeItem('firmaAdiHistory'); // Firma adı geçmişini temizle
+            localStorage.removeItem('yetkiliKisiHistory'); // Yetkili kişi geçmişini temizle
+            localStorage.removeItem('iletisimHistory'); // İletişim geçmişini temizle
             updateDatalist('firmaAdiList', []);
             updateDatalist('yetkiliKisiList', []);
+            updateDatalist('iletisimList', []);
         }
 
         document.getElementById('priceItems').addEventListener('input', calculateTotal);
@@ -732,6 +735,7 @@
 
         // PDF indirme fonksiyonu
         function downloadPdf() {
+            saveFormData(); // PDF indirmeden önce tüm verileri kaydet
             const siparisNo = document.getElementById('teklifNo').value.trim();
             let fileName = "TEKLİF FORMU.pdf";
 
@@ -753,15 +757,17 @@
             }, 500);  
         }
 
-        // --- Local Storage Fonksiyonları ---
+        // --- Local Storage ve Datalist Fonksiyonları ---
 
         function saveFormData() {
             const formData = {
                 teklifNo: document.getElementById('teklifNo').value,
                 teklifTarihi: document.getElementById('teklifTarihi').value,
+                // Firma, Yetkili ve İletişim bilgileri ayrıca history'ye kaydedilecek
                 firmaAdi: document.getElementById('firmaAdi').value,
                 yetkiliKisi: document.getElementById('yetkiliKisi').value,
                 iletisim: document.getElementById('iletisim').value,
+                // Diğer alanlar
                 gecerlilikSuresi: document.getElementById('gecerlilikSuresi').value,
                 currencySelect: document.getElementById('currencySelect').value,
                 kdvToggle: document.getElementById('kdvToggle').checked,
@@ -779,9 +785,10 @@
 
             localStorage.setItem('formData', JSON.stringify(formData));
             
-            // Firma adı ve yetkili kişi geçmişini kaydet
+            // Firma adı, yetkili kişi ve iletişim geçmişini kaydet
             saveToHistory('firmaAdiHistory', formData.firmaAdi);
             saveToHistory('yetkiliKisiHistory', formData.yetkiliKisi);
+            saveToHistory('iletisimHistory', formData.iletisim);
         }
 
         function loadFormData() {
@@ -828,26 +835,35 @@
                 }
             }
 
-            // Firma adı ve yetkili kişi geçmişini yükle ve datalistleri güncelle
+            // Firma adı, yetkili kişi ve iletişim geçmişini yükle ve datalistleri güncelle
             const firmaAdiHistory = JSON.parse(localStorage.getItem('firmaAdiHistory') || '[]');
             const yetkiliKisiHistory = JSON.parse(localStorage.getItem('yetkiliKisiHistory') || '[]');
+            const iletisimHistory = JSON.parse(localStorage.getItem('iletisimHistory') || '[]');
+
             updateDatalist('firmaAdiList', firmaAdiHistory);
             updateDatalist('yetkiliKisiList', yetkiliKisiHistory);
+            updateDatalist('iletisimList', iletisimHistory);
         }
 
+        // history'ye değer ekler ve güncelleyerek sadece benzersiz değerleri tutar
         function saveToHistory(key, value) {
-            if (!value) return; // Boş değeri kaydetme
+            if (!value || value.trim() === '') return; // Boş veya sadece boşluk içeren değeri kaydetme
             let history = JSON.parse(localStorage.getItem(key) || '[]');
-            if (!history.includes(value)) {
-                history.unshift(value); // En başa ekle
-                if (history.length > 10) { // Sadece son 10 kaydı tut
-                    history = history.slice(0, 10);
-                }
-                localStorage.setItem(key, JSON.stringify(history));
-                updateDatalist(key.replace('History', 'List'), history);
+            
+            // Değeri küçük/büyük harf fark etmeksizin kontrol et ve varsa kaldır
+            const lowerCaseValue = value.toLowerCase();
+            history = history.filter(item => item.toLowerCase() !== lowerCaseValue);
+            
+            history.unshift(value.trim()); // En başa ekle
+
+            if (history.length > 20) { // Sadece son 20 benzersiz kaydı tut
+                history = history.slice(0, 20);
             }
+            localStorage.setItem(key, JSON.stringify(history));
+            updateDatalist(key.replace('History', 'List'), history);
         }
 
+        // Datalist'i güncelleyen yardımcı fonksiyon
         function updateDatalist(listId, data) {
             const datalist = document.getElementById(listId);
             if (datalist) {
@@ -860,9 +876,10 @@
             }
         }
 
-        // Input alanlarına yazmaya başlandığında da saveFormData'yı tetikleyebiliriz
+        // Input alanlarının değiştiğini takip ederek history'yi güncelle
         document.getElementById('firmaAdi').addEventListener('change', () => saveToHistory('firmaAdiHistory', document.getElementById('firmaAdi').value));
         document.getElementById('yetkiliKisi').addEventListener('change', () => saveToHistory('yetkiliKisiHistory', document.getElementById('yetkiliKisi').value));
+        document.getElementById('iletisim').addEventListener('change', () => saveToHistory('iletisimHistory', document.getElementById('iletisim').value));
 
     </script>
 </body>
